@@ -1,0 +1,191 @@
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+const { program } = require('commander');
+
+// Configure CLI arguments
+program
+    .option('-i, --input <dir>', 'Input directory containing images', './raw_images')
+    .option('-o, --output <dir>', 'Output directory for compressed images', './optimized_images')
+    .option('-q, --quality <number>', 'Image quality (1-100)', '90')
+    .option('-w, --width <number>', 'Max width in pixels', '1920')
+    .option('-f, --format <type>', 'Force output format (jpg, png, webp, avif)', '')
+    .parse(process.argv);
+
+const options = program.opts();
+
+const INPUT_DIR = path.resolve(options.input);
+const OUTPUT_DIR = path.resolve(options.output);
+const QUALITY = parseInt(options.quality, 10);
+const MAX_WIDTH = parseInt(options.width, 10);
+
+const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.avif', '.heic'];
+
+async function processDirectory(dir) {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        const relativePath = path.relative(INPUT_DIR, fullPath);
+        const outputPath = path.join(OUTPUT_DIR, relativePath);
+
+        if (entry.isDirectory()) {
+            // Create corresponding directory in output
+            if (!fs.existsSync(outputPath)) {
+                await fs.promises.mkdir(outputPath, { recursive: true });
+            }
+            await processDirectory(fullPath);
+        } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (SUPPORTED_EXTENSIONS.includes(ext)) {
+                await compressImage(fullPath, outputPath, ext);
+            }
+        }
+    }
+}
+
+const MAX_SIZE_KB = 900;
+const heicConvert = require('heic-convert');
+
+async function compressImage(inputPath, outputPath, ext) {
+    try {
+        let currentQuality = QUALITY;
+        let success = false;
+
+        // Ensure directory exists
+        const dir = path.dirname(outputPath);
+        if (!fs.existsSync(dir)) {
+            await fs.promises.mkdir(dir, { recursive: true });
+        }
+
+        // Determine target extension
+        let targetExt = ext;
+        if (options.format) {
+            targetExt = `.${options.format}`;
+            // Update outputPath extension
+            const basename = path.basename(outputPath, path.extname(outputPath));
+            outputPath = path.join(dir, `${basename}${targetExt}`);
+        }
+
+        // Prepare input buffer/pipeline info
+        let pipeline;
+        let inputBuffer = null;
+        let isHeic = (ext === '.heic' || ext === '.heif');
+
+        if (isHeic) {
+            try {
+                const inputBufferRaw = await fs.promises.readFile(inputPath);
+                // Convert HEIC to JPEG buffer (quality doesn't matter much here as a middle step, but we want high integrity)
+                inputBuffer = await heicConvert({
+                    buffer: inputBufferRaw, // the HEIC file buffer
+                    format: 'JPEG',      // output format
+                    quality: 1           // quality of the temporary JPEG (0-1)
+                });
+            } catch (heicErr) {
+                console.error(`❌ HEIC conversion failed for ${path.basename(inputPath)}: ${heicErr.message}`);
+                return;
+            }
+        }
+
+        // Loop to ensure file size is under limit
+        while (!success && currentQuality > 10) {
+            // Create pipeline from buffer (if HEIC) or file path
+            pipeline = isHeic ? sharp(inputBuffer) : sharp(inputPath);
+
+            const metadata = await pipeline.metadata();
+
+            // Resize logic: Ensure longest side is MAX_WIDTH
+            // 'inside' preserves aspect ratio and ensures dimensions are <= MAX_WIDTH x MAX_WIDTH
+            if (metadata.width > MAX_WIDTH || metadata.height > MAX_WIDTH) {
+                pipeline.resize({
+                    width: MAX_WIDTH,
+                    height: MAX_WIDTH,
+                    fit: 'inside',
+                    withoutEnlargement: true
+                });
+            }
+
+            // Ensure sRGB color profile for web consistency -> prevents color shifts
+            pipeline.toColorspace('srgb');
+
+            // Configure format and quality
+            let format = options.format || ext.replace('.', '');
+            if (format === 'jpg') format = 'jpeg';
+            // If HEIC input and no format specified, default to jpeg or webp? 
+            // User likely wants WebP due to previous setting, but let's stick to options or source ext logic.
+            // If source was HEIC and options.format is empty, targetExt would be .heic which sharp can't write likely.
+            // So if options.format is empty and input is HEIC, FORCE JPEG or WebP default?
+            // Actually, if options.format is set (like via npm run compress), it handles it.
+            // If not set, let's default HEIC -> JPG to be safe, unless user specified otherwise.
+
+            if (isHeic && !options.format) {
+                format = 'jpeg';
+                outputPath = outputPath.replace('.heic', '.jpg');
+            }
+
+            if (format === 'jpeg') {
+                pipeline.jpeg({ quality: currentQuality, mozjpeg: true });
+            } else if (format === 'png') {
+                pipeline.png({ quality: currentQuality, compressionLevel: 8 });
+            } else if (format === 'webp') {
+                pipeline.webp({ quality: currentQuality });
+            } else if (format === 'avif') {
+                pipeline.avif({ quality: currentQuality });
+            } else if (format === 'tiff') {
+                pipeline.tiff({ quality: currentQuality });
+            } else if (format === 'heic') {
+                // pipeline.heif({ quality: currentQuality }); // Still might fail if writing IS supported but reading wasn't.
+                // Usually if no heic support, neither works. Let's warn or try.
+                // Safest to fallback to jpeg if output is heic? No, user asked for HEIC support.
+                // But if sharp lacks heic, we can't write it. 
+                // We can only READ it via heic-convert. 
+                // Let's assume user converts TO webp/jpg.
+            }
+
+            await pipeline.toFile(outputPath);
+
+            const outputStats = await fs.promises.stat(outputPath);
+            const outputSizeKB = outputStats.size / 1024;
+
+            if (outputSizeKB <= MAX_SIZE_KB) {
+                const inputStats = await fs.promises.stat(inputPath);
+                const savings = ((inputStats.size - outputStats.size) / inputStats.size * 100).toFixed(2);
+
+                console.log(`✓ ${path.basename(inputPath)}: ${(inputStats.size / 1024).toFixed(1)}KB -> ${outputSizeKB.toFixed(1)}KB (-${savings}%) [Q:${currentQuality}]`);
+                success = true;
+            } else {
+                console.log(`⚠️ ${path.basename(inputPath)} is ${outputSizeKB.toFixed(1)}KB (> ${MAX_SIZE_KB}KB). Retrying with quality ${currentQuality - 10}...`);
+                currentQuality -= 10;
+            }
+        }
+
+        if (!success) {
+            console.warn(`⚠️ Could not compress ${path.basename(inputPath)} below ${MAX_SIZE_KB}KB even at quality 10.`);
+        }
+
+    } catch (err) {
+        console.error(`❌ Error processing ${inputPath}:`, err.message);
+    }
+}
+
+async function main() {
+    console.log(`Starting compression...`);
+    console.log(`Input: ${INPUT_DIR}`);
+    console.log(`Output: ${OUTPUT_DIR}`);
+    console.log(`Quality: ${QUALITY}`);
+    console.log(`Max Width: ${MAX_WIDTH}px`);
+
+    if (!fs.existsSync(INPUT_DIR)) {
+        console.error(`Error: Input directory "${INPUT_DIR}" does not exist.`);
+        process.exit(1);
+    }
+
+    if (!fs.existsSync(OUTPUT_DIR)) {
+        await fs.promises.mkdir(OUTPUT_DIR, { recursive: true });
+    }
+
+    await processDirectory(INPUT_DIR);
+    console.log('Done!');
+}
+
+main();

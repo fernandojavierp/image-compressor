@@ -1,0 +1,21 @@
+{
+  "name": "image-compressor",
+  "version": "1.0.0",
+  "description": "High-resolution image compressor for WebP and AVIF formats",
+  "main": "image-compressor",
+  "scripts": {
+    "start": "node image-compressor"
+  },
+  "keywords": ["image", "compression", "webp", "avif", "sharp"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "sharp": "^0.33.0",
+    "commander": "^11.1.0",
+    "glob": "^10.3.10",
+    "heic-convert": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0"
+  }
+}

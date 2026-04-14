@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebP Converter & Compressor | Optimización de Imágenes Pro</title>
+    <meta name="description" content="Convierte tus imágenes a WebP con calidad del 90% de forma local y segura. Optimización premium para la web moderna.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <main class="container">
+        <header class="header">
+            <div class="badge">Edu-Project Fullstack</div>
+            <img src="logo.png" alt="WebP Converter Logo" class="app-logo">
+            <h1 id="main-title">WebP Image <span class="gradient-text">Converter</span></h1>
+            <p class="subtitle">Optimización profesional sin servidores. Tu privacidad es nuestra prioridad.</p>
+        </header>
+
+        <section class="upload-section card" id="drop-zone">
+            <input type="file" id="file-input" accept="image/*" multiple hidden>
+            <div class="upload-content">
+                <div class="icon-wrapper">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <h3>Arrastra tus imágenes o <span class="highlight">selecciona archivos</span></h3>
+                <p>Formatos soportados: JPG, PNG, BMP, AVIF, TIFF</p>
+            </div>
+        </section>
+
+        <section class="results-section hidden" id="results">
+            <div class="results-header">
+                <h2>Resultados de Optimización</h2>
+                <div class="batch-actions">
+                    <button id="reset-btn" class="btn btn-secondary">Limpiar todo</button>
+                    <button id="download-all-btn" class="btn btn-primary hidden">Descargar todo (.zip)</button>
+                </div>
+            </div>
+
+            <div class="results-grid" id="results-grid">
+                <!-- Se llenará dinámicamente con JS -->
+            </div>
+        </section>
+
+        <section class="features-grid">
+            <div class="feature-item">
+                <div class="feature-icon">🛡️</div>
+                <h4>100% Privado</h4>
+                <p>Los archivos no salen de tu navegador.</p>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">🚀</div>
+                <h4>Instantáneo</h4>
+                <p>Compresión ultra-rápida vía Canvas API.</p>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">📉</div>
+                <h4>Ultra Eficiente</h4>
+                <p>Calidad visual conservada al 90%.</p>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>&copy; 2026 WebP Converter - Proyecto Educativo</p>
+            <div class="footer-links">
+                <a href="#">Github</a>
+                <a href="#">Documentación</a>
+            </div>
+        </footer>
+    </main>
+
+    <canvas id="conversion-canvas" style="display: none;"></canvas>
+
+    <script src="app.js"></script>
+</body>
+</html>
