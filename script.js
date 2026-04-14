@@ -4,7 +4,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsSection = document.getElementById('results');
     const uploadSection = document.getElementById('drop-zone');
     const resultsGrid = document.getElementById('results-grid');
+    const spotlight = document.getElementById('detail-spotlight');
     
+    // Stats Summary
+    const totalCountLabel = document.getElementById('total-count');
+    const totalSavingsLabel = document.getElementById('total-savings-size');
+    const avgEfficiencyLabel = document.getElementById('avg-efficiency');
+
     // Settings elements
     const qualityRange = document.getElementById('quality-range');
     const qualityValue = document.getElementById('quality-value');
@@ -17,6 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let isProcessing = false;
     let processedFiles = [];
+    let globalStats = {
+        count: 0,
+        originalTotal: 0,
+        compressedTotal: 0
+    };
 
     // Update quality label
     qualityRange.addEventListener('input', (e) => {
@@ -60,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadSection.classList.add('hidden');
         resultsSection.classList.remove('hidden');
 
-        // Capture current settings for this batch
         const config = {
             quality: parseInt(qualityRange.value) / 100,
             maxWidth: parseInt(maxWidthInput.value) || 1920
@@ -71,9 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         isProcessing = false;
-        if (processedFiles.length > 1) {
-            downloadAllBtn.classList.remove('hidden');
-        }
     }
 
     async function processFile(file, config) {
@@ -87,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const img = new Image();
                 
                 img.onload = () => {
-                    // Calculate dimensions respecting maxWidth
                     let width = img.width;
                     let height = img.height;
                     
@@ -106,15 +112,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         const compressedSize = blob.size;
                         const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
                         const compressedUrl = URL.createObjectURL(blob);
-                        
                         const outputName = fileName.split('.')[0] + '_opt.webp';
                         
-                        processedFiles.push({
-                            name: outputName,
-                            blob: blob
-                        });
-
-                        addResultToGrid({
+                        const fileData = {
+                            id: Date.now() + Math.random(),
                             name: fileName,
                             outputName: outputName,
                             originalSize,
@@ -122,7 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             savings,
                             url: compressedUrl,
                             preview: imgData
-                        });
+                        };
+
+                        processedFiles.push(fileData);
+                        updateGlobalStats(originalSize, compressedSize);
+                        addTileToGrid(fileData);
                         resolve();
                     }, 'image/webp', config.quality);
                 };
@@ -132,66 +137,105 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addResultToGrid(data) {
-        const item = document.createElement('div');
-        item.className = 'result-item';
-        item.innerHTML = `
-            <img src="${data.preview}" class="result-img-preview" alt="Preview">
-            <div class="result-info">
-                <div class="result-name" title="${data.name}">${data.name}</div>
-                <div class="result-stats">
-                    <div class="stat-group">
-                        <span class="text-muted">Original:</span>
-                        <span>${formatBytes(data.originalSize)}</span>
-                    </div>
-                    <div class="stat-group">
-                        <span class="text-muted">WebP:</span>
-                        <span class="highlight">${formatBytes(data.compressedSize)}</span>
-                    </div>
-                    <div class="savings-label">-${data.savings}%</div>
+    function updateGlobalStats(orig, comp) {
+        globalStats.count++;
+        globalStats.originalTotal += orig;
+        globalStats.compressedTotal += comp;
+
+        const totalSaved = globalStats.originalTotal - globalStats.compressedTotal;
+        const avgEff = ((globalStats.originalTotal - globalStats.compressedTotal) / globalStats.originalTotal * 100).toFixed(1);
+
+        totalCountLabel.textContent = globalStats.count;
+        totalSavingsLabel.textContent = formatBytes(totalSaved);
+        avgEfficiencyLabel.textContent = `${avgEff}%`;
+    }
+
+    function addTileToGrid(data) {
+        const tile = document.createElement('div');
+        tile.className = 'result-tile';
+        tile.innerHTML = `
+            <img src="${data.preview}" alt="Tile">
+            <div class="tile-badge">-${data.savings}%</div>
+        `;
+
+        tile.addEventListener('click', () => {
+            document.querySelectorAll('.result-tile').forEach(t => t.classList.remove('active'));
+            tile.classList.add('active');
+            showSpotlight(data);
+        });
+
+        resultsGrid.appendChild(tile);
+        
+        // Auto-select first one
+        if (globalStats.count === 1) tile.click();
+    }
+
+    function showSpotlight(data) {
+        spotlight.innerHTML = `
+            <div class="spotlight-card">
+                <div class="spotlight-preview">
+                    <img src="${data.url}" id="spotlight-img" alt="Spotlight">
                 </div>
-            </div>
-            <div class="result-actions">
-                <button class="btn-download" title="Descargar">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                </button>
+                <div class="result-info">
+                   <h3 class="result-name">${data.name}</h3>
+                </div>
+                <div class="spotlight-stats">
+                    <div class="stat-box">
+                        <span class="stat-label">Original</span>
+                        <span class="stat-value">${formatBytes(data.originalSize)}</span>
+                    </div>
+                    <div class="stat-box highlight-stat">
+                        <span class="stat-label">Optimizado</span>
+                        <span class="stat-value">${formatBytes(data.compressedSize)}</span>
+                    </div>
+                </div>
+                <div class="spotlight-actions">
+                    <button class="btn btn-primary w-full" id="single-dl">Descargar WebP</button>
+                    <button class="btn btn-secondary w-full" id="compare-btn">Ver Original</button>
+                </div>
             </div>
         `;
 
-        item.querySelector('.btn-download').addEventListener('click', () => {
+        const dlBtn = document.getElementById('single-dl');
+        dlBtn.addEventListener('click', () => {
             const link = document.createElement('a');
             link.href = data.url;
             link.download = data.outputName;
             link.click();
         });
 
-        resultsGrid.appendChild(item);
+        const compareBtn = document.getElementById('compare-btn');
+        const img = document.getElementById('spotlight-img');
+        compareBtn.addEventListener('mousedown', () => img.src = data.preview);
+        compareBtn.addEventListener('mouseup', () => img.src = data.url);
+        compareBtn.addEventListener('mouseleave', () => img.src = data.url);
     }
 
     downloadAllBtn.addEventListener('click', async () => {
         if (processedFiles.length === 0) return;
         const zip = new JSZip();
         processedFiles.forEach(file => {
-            zip.file(file.name, file.blob);
+            zip.file(file.outputName, file.blob);
         });
         const content = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(content);
-        link.download = 'imagenes_optimizadas_webp.zip';
+        link.download = 'imagenes_optimizadas.zip';
         link.click();
     });
 
     resetBtn.addEventListener('click', () => {
         resultsGrid.innerHTML = '';
+        spotlight.innerHTML = '<div class="empty-selection"><p>Selecciona una imagen para ver detalles</p></div>';
         resultsSection.classList.add('hidden');
         uploadSection.classList.remove('hidden');
         fileInput.value = '';
-        downloadAllBtn.classList.add('hidden');
         processedFiles = [];
+        globalStats = { count: 0, originalTotal: 0, compressedTotal: 0 };
     });
 
     function formatBytes(bytes, decimals = 1) {
-        if (bytes === 0) return '0 Bytes';
+        if (bytes === 0) return '0 B';
         const k = 1024;
         const dm = decimals < 0 ? 0 : decimals;
         const sizes = ['B', 'KB', 'MB', 'GB'];

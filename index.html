@@ -56,16 +56,42 @@
         </section>
 
         <section class="results-section hidden" id="results">
-            <div class="results-header">
-                <h2>Resultados de Optimización</h2>
-                <div class="batch-actions">
-                    <button id="reset-btn" class="btn btn-secondary">Limpiar todo</button>
-                    <button id="download-all-btn" class="btn btn-primary hidden">Descargar todo (.zip)</button>
+            <div class="results-dashboard card">
+                <!-- Estadísticas Globales -->
+                <div class="dashboard-stats">
+                    <div class="stat-box">
+                        <span class="stat-label">Archivos</span>
+                        <span id="total-count" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Ahorro Total</span>
+                        <span id="total-savings-size" class="stat-value">0 KB</span>
+                    </div>
+                    <div class="stat-box highlight-stat">
+                        <span class="stat-label">Eficiencia Media</span>
+                        <span id="avg-efficiency" class="stat-value">0%</span>
+                    </div>
+                    <div class="batch-actions">
+                        <button id="download-all-btn" class="btn btn-primary btn-sm">ZIP</button>
+                        <button id="reset-btn" class="btn btn-secondary btn-sm">Reiniciar</button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="results-grid" id="results-grid">
-                <!-- Se llenará dinámicamente con JS -->
+                <div class="dashboard-content">
+                    <!-- Cuadrícula de miniaturas (izquierda) -->
+                    <div class="results-grid-wrapper">
+                        <div class="results-grid" id="results-grid">
+                            <!-- Miniaturas dinámicas -->
+                        </div>
+                    </div>
+
+                    <!-- Panel de Detalle (derecha) -->
+                    <div class="detail-spotlight" id="detail-spotlight">
+                        <div class="empty-selection">
+                            <p>Selecciona una imagen para ver detalles</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
