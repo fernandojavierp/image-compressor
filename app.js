@@ -5,13 +5,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadSection = document.getElementById('drop-zone');
     const resultsGrid = document.getElementById('results-grid');
     
+    // Settings elements
+    const qualityRange = document.getElementById('quality-range');
+    const qualityValue = document.getElementById('quality-value');
+    const maxWidthInput = document.getElementById('max-width');
+    
     const resetBtn = document.getElementById('reset-btn');
     const downloadAllBtn = document.getElementById('download-all-btn');
     const canvas = document.getElementById('conversion-canvas');
     const ctx = canvas.getContext('2d');
 
     let isProcessing = false;
-    let processedFiles = []; // To store {name, blob} for ZIP
+    let processedFiles = [];
+
+    // Update quality label
+    qualityRange.addEventListener('input', (e) => {
+        qualityValue.textContent = e.target.value;
+    });
 
     // Click to upload
     dropZone.addEventListener('click', () => !isProcessing && fileInput.click());
@@ -50,8 +60,14 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadSection.classList.add('hidden');
         resultsSection.classList.remove('hidden');
 
+        // Capture current settings for this batch
+        const config = {
+            quality: parseInt(qualityRange.value) / 100,
+            maxWidth: parseInt(maxWidthInput.value) || 1920
+        };
+
         for (const file of imageFiles) {
-            await processFile(file);
+            await processFile(file, config);
         }
 
         isProcessing = false;
@@ -60,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function processFile(file) {
+    async function processFile(file, config) {
         return new Promise((resolve) => {
             const originalSize = file.size;
             const fileName = file.name;
@@ -71,10 +87,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const img = new Image();
                 
                 img.onload = () => {
-                    canvas.width = img.width;
-                    canvas.height = img.height;
+                    // Calculate dimensions respecting maxWidth
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > config.maxWidth) {
+                        const ratio = config.maxWidth / width;
+                        width = config.maxWidth;
+                        height = height * ratio;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0);
+                    ctx.drawImage(img, 0, 0, width, height);
 
                     canvas.toBlob((blob) => {
                         const compressedSize = blob.size;
@@ -98,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             preview: imgData
                         });
                         resolve();
-                    }, 'image/webp', 0.9);
+                    }, 'image/webp', config.quality);
                 };
                 img.src = imgData;
             };
@@ -142,15 +168,12 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsGrid.appendChild(item);
     }
 
-    // Download All as ZIP
     downloadAllBtn.addEventListener('click', async () => {
         if (processedFiles.length === 0) return;
-
         const zip = new JSZip();
         processedFiles.forEach(file => {
             zip.file(file.name, file.blob);
         });
-
         const content = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(content);
