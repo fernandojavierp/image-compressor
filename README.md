@@ -3,7 +3,7 @@
 Este es un proyecto educativo desarrollado para el curso de **Fullstack**, enfocado en la manipulación de archivos en el cliente (Client-side) y la optimización de recursos web. La herramienta permite convertir cualquier formato de imagen (JPG, PNG, BMP, etc.) al formato moderno **WebP** con una calidad del 90%.
 
 ## ✨ Características
-*   **Conversión Universal:** Soporta JPG, PNG, BMP, AVIF, TIFF y cualquier formato que sea legible por el navegador.
+*   **Conversión Universal:** Soporta JPG, PNG, WEBP, BMP, AVIF, **TIFF** y **HEIC/HEIF**.
 *   **Salida Optimizada:** Genera archivos `.webp` de alto rendimiento.
 *   **Procesamiento 100% Local:** Las imágenes no se suben a ningún servidor; la compresión ocurre íntegramente en el navegador del usuario, garantizando máxima privacidad y velocidad.
 *   **Comparativa en Tiempo Real:** Visualiza el peso original frente al optimizado y el porcentaje de ahorro antes de descargar.
@@ -15,6 +15,9 @@ Este es un proyecto educativo desarrollado para el curso de **Fullstack**, enfoc
 *   **JavaScript (ES6+):**
     *   **FileReader API:** Para el acceso instantáneo a archivos locales.
     *   **Canvas API:** El motor de renderizado que permite la recodificación de píxeles.
+    *   **UTIF.js:** Decodificador profesional para archivos TIFF.
+    *   **heic2any:** Conversor para formatos HEIC/HEIF (iOS).
+    *   **JSZip:** Para la generación de descargas por lotes en archivos ZIP.
     *   **Blobs & URLs:** Para la gestión eficiente de memoria y descargas directas.
 
 ## 📝 Lógica de Compresión

@@ -61,7 +61,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function handleFiles(files) {
-        const imageFiles = files.filter(f => f.type.startsWith('image/'));
+        const imageFiles = files.filter(f => 
+            f.type.startsWith('image/') || 
+            /\.(heic|heif|tif|tiff)$/i.test(f.name)
+        );
+        
         if (imageFiles.length === 0) {
             alert('Por favor, selecciona archivos de imagen válidos.');
             return;
@@ -84,56 +88,105 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function processFile(file, config) {
-        return new Promise((resolve) => {
-            const originalSize = file.size;
-            const fileName = file.name;
-            const reader = new FileReader();
+        const originalSize = file.size;
+        const fileName = file.name;
+        const extension = fileName.split('.').pop().toLowerCase();
 
-            reader.onload = (e) => {
-                const imgData = e.target.result;
-                const img = new Image();
+        try {
+            let imageSource;
+            let previewSource;
+
+            if (extension === 'heic' || extension === 'heif') {
+                // Convert HEIC to JPEG for browser compatibility
+                const convertedBlob = await heic2any({
+                    blob: file,
+                    toType: 'image/jpeg',
+                    quality: 0.8
+                });
+                const blobUrl = URL.createObjectURL(Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob);
+                imageSource = await loadImage(blobUrl);
+                previewSource = blobUrl;
+            } else if (extension === 'tif' || extension === 'tiff') {
+                // Decode TIFF using UTIF.js
+                const buffer = await file.arrayBuffer();
+                const ifds = UTIF.decode(buffer);
+                UTIF.decodeImage(buffer, ifds[0]);
+                const rgba = UTIF.toRGBA8(ifds[0]);
                 
-                img.onload = () => {
-                    let width = img.width;
-                    let height = img.height;
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = ifds[0].width;
+                tempCanvas.height = ifds[0].height;
+                const tempCtx = tempCanvas.getContext('2d');
+                const imgData = tempCtx.createImageData(tempCanvas.width, tempCanvas.height);
+                imgData.data.set(rgba);
+                tempCtx.putImageData(imgData, 0, 0);
+                
+                imageSource = tempCanvas;
+                previewSource = tempCanvas.toDataURL('image/jpeg', 0.8);
+            } else {
+                // Standard browser-supported images
+                const reader = new FileReader();
+                const imgData = await new Promise((resolve) => {
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
+                imageSource = await loadImage(imgData);
+                previewSource = imgData;
+            }
+
+            // Processing with Canvas
+            let width = imageSource.width || imageSource.videoWidth; 
+            let height = imageSource.height || imageSource.videoHeight;
+            
+            if (width > config.maxWidth) {
+                const ratio = config.maxWidth / width;
+                width = config.maxWidth;
+                height = height * ratio;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(imageSource, 0, 0, width, height);
+
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => {
+                    const compressedSize = blob.size;
+                    const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+                    const compressedUrl = URL.createObjectURL(blob);
+                    const outputName = fileName.split('.')[0] + '_opt.webp';
                     
-                    if (width > config.maxWidth) {
-                        const ratio = config.maxWidth / width;
-                        width = config.maxWidth;
-                        height = height * ratio;
-                    }
+                    const fileData = {
+                        id: Date.now() + Math.random(),
+                        name: fileName,
+                        outputName: outputName,
+                        originalSize,
+                        compressedSize,
+                        savings,
+                        url: compressedUrl,
+                        preview: previewSource,
+                        blob: blob
+                    };
 
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0, width, height);
+                    processedFiles.push(fileData);
+                    updateGlobalStats(originalSize, compressedSize);
+                    addTileToGrid(fileData);
+                    resolve();
+                }, 'image/webp', config.quality);
+            });
 
-                    canvas.toBlob((blob) => {
-                        const compressedSize = blob.size;
-                        const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
-                        const compressedUrl = URL.createObjectURL(blob);
-                        const outputName = fileName.split('.')[0] + '_opt.webp';
-                        
-                        const fileData = {
-                            id: Date.now() + Math.random(),
-                            name: fileName,
-                            outputName: outputName,
-                            originalSize,
-                            compressedSize,
-                            savings,
-                            url: compressedUrl,
-                            preview: imgData
-                        };
+        } catch (error) {
+            console.error('Error processing file:', fileName, error);
+            alert(`Error al procesar ${fileName}. Formato no soportado o archivo corrupto.`);
+        }
+    }
 
-                        processedFiles.push(fileData);
-                        updateGlobalStats(originalSize, compressedSize);
-                        addTileToGrid(fileData);
-                        resolve();
-                    }, 'image/webp', config.quality);
-                };
-                img.src = imgData;
-            };
-            reader.readAsDataURL(file);
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = (err) => reject(err);
+            img.src = src;
         });
     }
 
