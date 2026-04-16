@@ -107,22 +107,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 imageSource = await loadImage(blobUrl);
                 previewSource = blobUrl;
             } else if (extension === 'tif' || extension === 'tiff') {
-                // Decode TIFF using UTIF.js
-                const buffer = await file.arrayBuffer();
-                const ifds = UTIF.decode(buffer);
-                UTIF.decodeImage(buffer, ifds[0]);
-                const rgba = UTIF.toRGBA8(ifds[0]);
-                
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = ifds[0].width;
-                tempCanvas.height = ifds[0].height;
-                const tempCtx = tempCanvas.getContext('2d');
-                const imgData = tempCtx.createImageData(tempCanvas.width, tempCanvas.height);
-                imgData.data.set(rgba);
-                tempCtx.putImageData(imgData, 0, 0);
-                
-                imageSource = tempCanvas;
-                previewSource = tempCanvas.toDataURL('image/jpeg', 0.8);
+                try {
+                    // Method 1: UTIF.js (Best for common TIFFs)
+                    const buffer = await file.arrayBuffer();
+                    const ifds = UTIF.decode(buffer);
+                    if (!ifds || ifds.length === 0) throw new Error('No IFDs');
+
+                    let mainIfd = ifds[0];
+                    for (let i = 1; i < ifds.length; i++) {
+                        if ((ifds[i].width * ifds[i].height) > (mainIfd.width * mainIfd.height)) mainIfd = ifds[i];
+                    }
+
+                    UTIF.decodeImage(buffer, mainIfd);
+                    const rgba = UTIF.toRGBA8(mainIfd);
+                    if (!rgba) throw new Error('UTIF could not convert to RGBA');
+                    
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = mainIfd.width;
+                    tempCanvas.height = mainIfd.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    const imgData = tempCtx.createImageData(tempCanvas.width, tempCanvas.height);
+                    imgData.data.set(rgba);
+                    tempCtx.putImageData(imgData, 0, 0);
+                    
+                    imageSource = tempCanvas;
+                    previewSource = tempCanvas.toDataURL('image/jpeg', 0.6);
+                } catch (utifError) {
+                    console.warn('UTIF failed, trying GeoTIFF.js:', utifError);
+                    try {
+                        // Method 2: GeoTIFF.js (Better for high-bit depth/PRO TIFFs)
+                        const buffer = await file.arrayBuffer();
+                        const tiff = await GeoTIFF.fromArrayBuffer(buffer);
+                        const image = await tiff.getImage();
+                        const width = image.getWidth();
+                        const height = image.getHeight();
+                        
+                        // readRGB returns a flattened array of RGB values
+                        const rgb = await image.readRGB();
+                        
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = width;
+                        tempCanvas.height = height;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        const imgData = tempCtx.createImageData(width, height);
+                        
+                        // Convert RGB to RGBA
+                        for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+                            imgData.data[j] = rgb[i];     // R
+                            imgData.data[j + 1] = rgb[i + 1]; // G
+                            imgData.data[j + 2] = rgb[i + 2]; // B
+                            imgData.data[j + 3] = 255;      // A
+                        }
+                        
+                        tempCtx.putImageData(imgData, 0, 0);
+                        imageSource = tempCanvas;
+                        previewSource = tempCanvas.toDataURL('image/jpeg', 0.6);
+                    } catch (geoTiffError) {
+                        console.warn('GeoTIFF failed, trying native:', geoTiffError);
+                        // Method 3: Native Fallback (Safari)
+                        const reader = new FileReader();
+                        const imgData = await new Promise((resolve, reject) => {
+                            reader.onload = (e) => resolve(e.target.result);
+                            reader.onerror = (e) => reject(new Error('Formato TIFF no soportado por este navegador.'));
+                            reader.readAsDataURL(file);
+                        });
+                        imageSource = await loadImage(imgData);
+                        previewSource = imgData;
+                    }
+                }
             } else {
                 // Standard browser-supported images
                 const reader = new FileReader();
@@ -177,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error processing file:', fileName, error);
-            alert(`Error al procesar ${fileName}. Formato no soportado o archivo corrupto.`);
+            alert(`Error al procesar ${fileName}: ${error.message}`);
         }
     }
 
