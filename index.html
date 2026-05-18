@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
@@ -48,13 +49,13 @@
         </section>
 
         <section class="upload-section card" id="drop-zone">
-            <input type="file" id="file-input" accept="image/*,.heic,.heif,.tif,.tiff" multiple hidden>
+            <input type="file" id="file-input" accept="image/*,.heic,.heif,.tif,.tiff,.pdf" multiple hidden>
             <div class="upload-content">
                 <div class="icon-wrapper">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 </div>
-                <h3>Arrastra tus imágenes o <span class="highlight">selecciona archivos</span></h3>
-                <p>Formatos soportados: JPG, PNG, WEBP, AVIF, HEIC, TIFF, BMP</p>
+                <h3>Arrastra tus archivos o <span class="highlight">selecciona archivos</span></h3>
+                <p>Formatos soportados: JPG, PNG, WEBP, AVIF, HEIC, TIFF, BMP, PDF</p>
             </div>
         </section>
 
@@ -75,7 +76,7 @@
                         <span id="avg-efficiency" class="stat-value">0%</span>
                     </div>
                     <div class="batch-actions">
-                        <button id="download-all-btn" class="btn btn-primary btn-sm">ZIP</button>
+                        <button id="download-all-btn" class="btn btn-primary btn-sm" title="Descargar todo como ZIP">Descargar ZIP</button>
                         <button id="reset-btn" class="btn btn-secondary btn-sm">Reiniciar</button>
                     </div>
                 </div>

@@ -18,8 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const resetBtn = document.getElementById('reset-btn');
     const downloadAllBtn = document.getElementById('download-all-btn');
-    const canvas = document.getElementById('conversion-canvas');
-    const ctx = canvas.getContext('2d');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     let isProcessing = false;
     let processedFiles = [];
@@ -61,13 +60,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function handleFiles(files) {
-        const imageFiles = files.filter(f => 
+        const validFiles = files.filter(f => 
             f.type.startsWith('image/') || 
-            /\.(heic|heif|tif|tiff)$/i.test(f.name)
+            f.type === 'application/pdf' ||
+            /\.(heic|heif|tif|tiff|pdf)$/i.test(f.name)
         );
         
-        if (imageFiles.length === 0) {
-            alert('Por favor, selecciona archivos de imagen válidos.');
+        if (validFiles.length === 0) {
+            alert('Por favor, selecciona archivos de imagen o PDF válidos.');
             return;
         }
 
@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
             maxWidth: parseInt(maxWidthInput.value) || 1920
         };
 
-        for (const file of imageFiles) {
+        for (const file of validFiles) {
             await processFile(file, config);
         }
 
@@ -93,11 +93,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const extension = fileName.split('.').pop().toLowerCase();
 
         try {
+            if (extension === 'pdf' || file.type === 'application/pdf') {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 2.0 });
+                    
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = viewport.width;
+                    tempCanvas.height = viewport.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    await page.render({
+                        canvasContext: tempCtx,
+                        viewport: viewport
+                    }).promise;
+                    
+                    const lastDotIndex = fileName.lastIndexOf('.');
+                    const baseName = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+                    const outputName = `${baseName}_p${i}.webp`;
+                    await finalizeImage(tempCanvas, tempCanvas.toDataURL('image/jpeg', 0.6), Math.round(originalSize / pdf.numPages), outputName, config);
+                }
+                return;
+            }
+
             let imageSource;
             let previewSource;
 
             if (extension === 'heic' || extension === 'heif') {
-                // Convert HEIC to JPEG for browser compatibility
                 const convertedBlob = await heic2any({
                     blob: file,
                     toType: 'image/jpeg',
@@ -107,76 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 imageSource = await loadImage(blobUrl);
                 previewSource = blobUrl;
             } else if (extension === 'tif' || extension === 'tiff') {
-                try {
-                    // Method 1: UTIF.js (Best for common TIFFs)
-                    const buffer = await file.arrayBuffer();
-                    const ifds = UTIF.decode(buffer);
-                    if (!ifds || ifds.length === 0) throw new Error('No IFDs');
-
-                    let mainIfd = ifds[0];
-                    for (let i = 1; i < ifds.length; i++) {
-                        if ((ifds[i].width * ifds[i].height) > (mainIfd.width * mainIfd.height)) mainIfd = ifds[i];
-                    }
-
-                    UTIF.decodeImage(buffer, mainIfd);
-                    const rgba = UTIF.toRGBA8(mainIfd);
-                    if (!rgba) throw new Error('UTIF could not convert to RGBA');
-                    
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = mainIfd.width;
-                    tempCanvas.height = mainIfd.height;
-                    const tempCtx = tempCanvas.getContext('2d');
-                    const imgData = tempCtx.createImageData(tempCanvas.width, tempCanvas.height);
-                    imgData.data.set(rgba);
-                    tempCtx.putImageData(imgData, 0, 0);
-                    
-                    imageSource = tempCanvas;
-                    previewSource = tempCanvas.toDataURL('image/jpeg', 0.6);
-                } catch (utifError) {
-                    console.warn('UTIF failed, trying GeoTIFF.js:', utifError);
-                    try {
-                        // Method 2: GeoTIFF.js (Better for high-bit depth/PRO TIFFs)
-                        const buffer = await file.arrayBuffer();
-                        const tiff = await GeoTIFF.fromArrayBuffer(buffer);
-                        const image = await tiff.getImage();
-                        const width = image.getWidth();
-                        const height = image.getHeight();
-                        
-                        // readRGB returns a flattened array of RGB values
-                        const rgb = await image.readRGB();
-                        
-                        const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = width;
-                        tempCanvas.height = height;
-                        const tempCtx = tempCanvas.getContext('2d');
-                        const imgData = tempCtx.createImageData(width, height);
-                        
-                        // Convert RGB to RGBA
-                        for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
-                            imgData.data[j] = rgb[i];     // R
-                            imgData.data[j + 1] = rgb[i + 1]; // G
-                            imgData.data[j + 2] = rgb[i + 2]; // B
-                            imgData.data[j + 3] = 255;      // A
-                        }
-                        
-                        tempCtx.putImageData(imgData, 0, 0);
-                        imageSource = tempCanvas;
-                        previewSource = tempCanvas.toDataURL('image/jpeg', 0.6);
-                    } catch (geoTiffError) {
-                        console.warn('GeoTIFF failed, trying native:', geoTiffError);
-                        // Method 3: Native Fallback (Safari)
-                        const reader = new FileReader();
-                        const imgData = await new Promise((resolve, reject) => {
-                            reader.onload = (e) => resolve(e.target.result);
-                            reader.onerror = (e) => reject(new Error('Formato TIFF no soportado por este navegador.'));
-                            reader.readAsDataURL(file);
-                        });
-                        imageSource = await loadImage(imgData);
-                        previewSource = imgData;
-                    }
-                }
+                // ... logic for TIFF ... (keep it as is but wrap in try/catch or ensure it returns what we need)
+                imageSource = await handleTIFF(file);
+                previewSource = (imageSource instanceof HTMLCanvasElement) ? imageSource.toDataURL('image/jpeg', 0.6) : imageSource.src;
             } else {
-                // Standard browser-supported images
                 const reader = new FileReader();
                 const imgData = await new Promise((resolve) => {
                     reader.onload = (e) => resolve(e.target.result);
@@ -186,51 +145,119 @@ document.addEventListener('DOMContentLoaded', () => {
                 previewSource = imgData;
             }
 
-            // Processing with Canvas
-            let width = imageSource.width || imageSource.videoWidth; 
-            let height = imageSource.height || imageSource.videoHeight;
-            
-            if (width > config.maxWidth) {
-                const ratio = config.maxWidth / width;
-                width = config.maxWidth;
-                height = height * ratio;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(imageSource, 0, 0, width, height);
-
-            return new Promise((resolve) => {
-                canvas.toBlob((blob) => {
-                    const compressedSize = blob.size;
-                    const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
-                    const compressedUrl = URL.createObjectURL(blob);
-                    const outputName = fileName.split('.')[0] + '_opt.webp';
-                    
-                    const fileData = {
-                        id: Date.now() + Math.random(),
-                        name: fileName,
-                        outputName: outputName,
-                        originalSize,
-                        compressedSize,
-                        savings,
-                        url: compressedUrl,
-                        preview: previewSource,
-                        blob: blob
-                    };
-
-                    processedFiles.push(fileData);
-                    updateGlobalStats(originalSize, compressedSize);
-                    addTileToGrid(fileData);
-                    resolve();
-                }, 'image/webp', config.quality);
-            });
+            const lastDotIndex = fileName.lastIndexOf('.');
+            const baseName = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+            const outputName = baseName + '_opt.webp';
+            await finalizeImage(imageSource, previewSource, originalSize, outputName, config);
 
         } catch (error) {
             console.error('Error processing file:', fileName, error);
             alert(`Error al procesar ${fileName}: ${error.message}`);
         }
+    }
+
+    async function handleTIFF(file) {
+        const buffer = await file.arrayBuffer();
+        try {
+            const ifds = UTIF.decode(buffer);
+            let mainIfd = ifds[0];
+            for (let i = 1; i < ifds.length; i++) {
+                if ((ifds[i].width * ifds[i].height) > (mainIfd.width * mainIfd.height)) mainIfd = ifds[i];
+            }
+            UTIF.decodeImage(buffer, mainIfd);
+            const rgba = UTIF.toRGBA8(mainIfd);
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = mainIfd.width;
+            tempCanvas.height = mainIfd.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            const imgData = tempCtx.createImageData(tempCanvas.width, tempCanvas.height);
+            imgData.data.set(rgba);
+            tempCtx.putImageData(imgData, 0, 0);
+            return tempCanvas;
+        } catch (e) {
+            // GeoTIFF Fallback
+            const tiff = await GeoTIFF.fromArrayBuffer(buffer);
+            const image = await tiff.getImage();
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const rgb = await image.readRGB();
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            const imgData = tempCtx.createImageData(width, height);
+            for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+                imgData.data[j] = rgb[i];
+                imgData.data[j + 1] = rgb[i + 1];
+                imgData.data[j + 2] = rgb[i + 2];
+                imgData.data[j + 3] = 255;
+            }
+            tempCtx.putImageData(imgData, 0, 0);
+            return tempCanvas;
+        }
+    }
+
+    function getUniqueOutputName(name) {
+        let baseName = name;
+        let extension = '';
+        const lastDot = name.lastIndexOf('.');
+        if (lastDot !== -1) {
+            baseName = name.substring(0, lastDot);
+            extension = name.substring(lastDot);
+        }
+        
+        let uniqueName = name;
+        let counter = 1;
+        while (processedFiles.some(f => f.outputName === uniqueName)) {
+            uniqueName = `${baseName} (${counter})${extension}`;
+            counter++;
+        }
+        return uniqueName;
+    }
+
+    async function finalizeImage(imageSource, previewSource, originalSize, outputName, config) {
+        let width = imageSource.width || imageSource.videoWidth; 
+        let height = imageSource.height || imageSource.videoHeight;
+        
+        if (width > config.maxWidth) {
+            const ratio = config.maxWidth / width;
+            width = config.maxWidth;
+            height = height * ratio;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imageSource, 0, 0, width, height);
+
+        return new Promise((resolve) => {
+            canvas.toBlob((blob) => {
+                const compressedSize = blob.size;
+                const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+                const compressedUrl = URL.createObjectURL(blob);
+                
+                const uniqueOutputName = getUniqueOutputName(outputName);
+                const displayName = uniqueOutputName.replace(/\.[^/.]+$/, '').replace('_opt', '');
+
+                const fileData = {
+                    id: Date.now() + Math.random(),
+                    name: displayName,
+                    outputName: uniqueOutputName,
+                    originalSize,
+                    compressedSize,
+                    savings,
+                    url: compressedUrl,
+                    preview: previewSource,
+                    blob: blob
+                };
+
+                processedFiles.push(fileData);
+                updateGlobalStats(originalSize, compressedSize);
+                addTileToGrid(fileData);
+                resolve();
+            }, 'image/webp', config.quality);
+        });
     }
 
     function loadImage(src) {
@@ -309,6 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
             link.click();
         });
 
+
+
         const compareBtn = document.getElementById('compare-btn');
         const img = document.getElementById('spotlight-img');
         compareBtn.addEventListener('mousedown', () => img.src = data.preview);
@@ -328,6 +357,8 @@ document.addEventListener('DOMContentLoaded', () => {
         link.download = 'imagenes_optimizadas.zip';
         link.click();
     });
+
+
 
     resetBtn.addEventListener('click', () => {
         resultsGrid.innerHTML = '';
